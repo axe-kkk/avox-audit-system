@@ -54,6 +54,16 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     volumes:
       - pdf_storage:/app/storage/pdfs
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\", timeout=5).read()"',
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 45s
     depends_on:
       db:
         condition: service_healthy
@@ -116,7 +126,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:
