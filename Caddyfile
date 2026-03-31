@@ -1,6 +1,6 @@
-# TLS (Let's Encrypt). Open 80/443 and point DNS to this server.
+# TLS (Let's Encrypt). Open 80/443; DNS A for avox-development.pp.ua -> this server.
 
-audit.avox-development.pp.ua {
+avox-development.pp.ua {
     encode gzip zstd
     reverse_proxy api:8000
 }

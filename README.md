@@ -102,7 +102,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Снаружи приложение открывается по **HTTPS** с хоста из **`Caddyfile`** (по умолчанию `audit.avox-development.pp.ua`), форма: **`/`**. Пошагово — **`DEPLOY.md`**.
+Снаружи приложение открывается по **HTTPS** с хоста из **`Caddyfile`** (по умолчанию `avox-development.pp.ua`), форма: **`/`**. Пошагово — **`DEPLOY.md`**.
 
 Для **разработки без полного Docker-стека** удобнее раздел **2** (uvicorn + Celery на машине, своя БД/Redis).
 
