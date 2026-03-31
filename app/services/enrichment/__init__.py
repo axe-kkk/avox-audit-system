@@ -439,12 +439,12 @@ async def enrich_website(url: str) -> EnrichmentResult:
     from urllib.parse import urlparse
     import httpx
 
-    parsed = urlparse(url)
+    parsed = urlparse(url if "://" in url else f"https://{url}")
     domain = parsed.netloc
     base_url = f"{parsed.scheme}://{domain}"
 
     dns_task = detect_dns_info(domain)
-    traffic_task = estimate_traffic(domain)
+    traffic_task = estimate_traffic(base_url)
 
     async def _robots():
         async with httpx.AsyncClient() as client:

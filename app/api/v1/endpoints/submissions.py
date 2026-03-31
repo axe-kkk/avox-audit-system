@@ -3,6 +3,7 @@ import math
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.submission import Submission, SubmissionStatus
@@ -81,12 +82,25 @@ async def list_submissions(
     )
 
 
+def _traffic_from_submission(submission: Submission):
+    enr = submission.enrichment
+    if not enr or not enr.raw_data or not isinstance(enr.raw_data, dict):
+        return None
+    return enr.raw_data.get("traffic")
+
+
 @router.get("/{submission_id}", response_model=SubmissionRead)
 async def get_submission(
     submission_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    submission = await db.get(Submission, submission_id)
+    stmt = (
+        select(Submission)
+        .options(selectinload(Submission.enrichment))
+        .where(Submission.id == submission_id)
+    )
+    submission = (await db.execute(stmt)).scalar_one_or_none()
     if not submission:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
-    return submission
+    base = SubmissionRead.model_validate(submission)
+    return base.model_copy(update={"traffic": _traffic_from_submission(submission)})

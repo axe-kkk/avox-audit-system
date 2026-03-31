@@ -537,6 +537,17 @@ body {
   line-height: 1.35;
 }
 
+.side-traffic {
+  margin: -0.25rem 0 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.side-traffic[hidden] {
+  display: none !important;
+}
+
 .pipeline {
   display: flex;
   flex-direction: column;

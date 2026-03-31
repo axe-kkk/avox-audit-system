@@ -372,6 +372,44 @@
     container.innerHTML = html;
   }
 
+  function updateTrafficLine(data) {
+    var el = $("#last-traffic");
+    if (!el) return;
+    var st = typeof data.status === "string" ? data.status : "";
+    var tr = data.traffic;
+    if (!tr) {
+      if (st === "pending" || st === "enriching") {
+        el.textContent =
+          "Відвідуваність: оцінка з’явиться після сканування сайту.";
+        el.hidden = false;
+        return;
+      }
+      el.textContent = "Відвідуваність: дані недоступні.";
+      el.hidden = false;
+      return;
+    }
+    var visits = tr.estimated_monthly_visits;
+    if (visits != null && visits !== "") {
+      var n = Number(String(visits).replace(/,/g, ""));
+      if (!isNaN(n) && isFinite(n) && n > 0) {
+        var line =
+          "Відвідуваність (оцінка): " +
+          Math.round(n).toLocaleString("uk-UA") +
+          " / міс.";
+        if (tr.traffic_tier_label)
+          line += " (" + String(tr.traffic_tier_label) + ")";
+        el.textContent = line;
+        el.hidden = false;
+        return;
+      }
+    }
+    if (tr.insufficient_data)
+      el.textContent =
+        "Відвідуваність: публічні дані SimilarWeb для цього домену недоступні.";
+    else el.textContent = "Відвідуваність: дані недоступні.";
+    el.hidden = false;
+  }
+
   function updateSelectedAuditPanel(data) {
     if (!data || data.id == null || data.id !== state.selectedAuditId) return;
     var block = $("#last-audit-block");
@@ -384,6 +422,7 @@
       var u = data.company_url ? displayHost(data.company_url) : "";
       urlEl.textContent = u || "—";
     }
+    updateTrafficLine(data);
     var st = typeof data.status === "string" ? data.status : "";
     renderPipelineInto($("#last-pipeline"), st);
     var detail = "";

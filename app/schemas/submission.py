@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -97,6 +97,7 @@ class SubmissionRead(BaseModel):
     error_message: Optional[str]
     created_at: datetime
     updated_at: datetime
+    traffic: Optional[Dict[str, Any]] = None
 
     model_config = {"from_attributes": True}
 

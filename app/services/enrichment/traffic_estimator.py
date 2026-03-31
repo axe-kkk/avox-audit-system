@@ -1,5 +1,6 @@
 import logging
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -49,7 +50,7 @@ def _extract_visitors_from_similarweb(data: Dict[str, Any]) -> Optional[int]:
 
     eng = data.get("Engagments") or data.get("Engagements")
     if isinstance(eng, dict):
-        for key in ("Visits", "visitors", "Visitors"):
+        for key in ("Visits", "MonthlyVisits", "visitors", "Visitors"):
             if key in eng:
                 n = _coerce_positive_int(eng[key])
                 if n is not None:
@@ -90,42 +91,64 @@ def _empty_result(insufficient: bool = True) -> Dict[str, Any]:
         "insufficient_data": insufficient,
     }
 
-async def _fetch_similarweb(domain: str) -> Optional[Dict[str, Any]]:
-    url = f"{_SIMILARWEB_DATA_API}?domain={domain}"
+async def _fetch_similarweb(domain_param: str) -> Optional[Dict[str, Any]]:
+    """GET data.similarweb.com/api/v1/data?domain=<url> — domain як повний URL, httpx закодує query."""
     try:
+        headers = json_request_headers()
+        headers["Referer"] = "https://www.similarweb.com/"
+        headers["Origin"] = "https://www.similarweb.com"
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                url,
+                _SIMILARWEB_DATA_API,
+                params={"domain": domain_param},
                 timeout=_TIMEOUT,
                 follow_redirects=True,
-                headers=json_request_headers(),
+                headers=headers,
             )
             if resp.status_code != 200:
                 log.debug(
-                    "[traffic] SimilarWeb data API returned %d for %s",
+                    "[traffic] SimilarWeb data API returned %d for domain=%s",
                     resp.status_code,
-                    domain,
+                    domain_param,
                 )
                 return None
             return resp.json()
     except Exception as exc:
-        log.debug("[traffic] SimilarWeb request failed for %s: %s", domain, exc)
+        log.debug("[traffic] SimilarWeb request failed for domain=%s: %s", domain_param, exc)
         return None
 
-async def estimate_traffic(domain: str) -> Dict[str, Any]:
+
+def _similarweb_domain_param(site_input: str) -> Optional[str]:
+    s = (site_input or "").strip()
+    if not s:
+        return None
+    if "://" not in s:
+        s = f"https://{s}"
+    p = urlparse(s)
+    if not p.netloc:
+        return None
+    scheme = (p.scheme or "https").lower()
+    host = p.netloc.lower()
+    return f"{scheme}://{host}"
+
+
+async def estimate_traffic(site_url: str) -> Dict[str, Any]:
     """
-    Лише SimilarWeb. Якщо немає числа відвідувачів — insufficient_data=True, без оцінок з інших джерел.
+    SimilarWeb data API: ?domain=<повний URL>, напр. https://www.pomo-co.work
     """
-    clean_domain = domain.lower().replace("www.", "").strip()
-    sw_data = await _fetch_similarweb(clean_domain)
+    domain_param = _similarweb_domain_param(site_url)
+    if not domain_param:
+        return _empty_result(True)
+
+    sw_data = await _fetch_similarweb(domain_param)
 
     if not sw_data:
-        log.info("[traffic] %s: SimilarWeb недоступний — недостатньо даних", clean_domain)
+        log.info("[traffic] %s: SimilarWeb недоступний — недостатньо даних", domain_param)
         return _empty_result(True)
 
     monthly = _extract_visitors_from_similarweb(sw_data)
     if not monthly:
-        log.info("[traffic] %s: SimilarWeb без поля відвідувачів — недостатньо даних", clean_domain)
+        log.info("[traffic] %s: SimilarWeb без поля відвідувачів — недостатньо даних", domain_param)
         return _empty_result(True)
 
     tier, label = _visits_to_tier(monthly)
@@ -140,7 +163,7 @@ async def estimate_traffic(domain: str) -> Dict[str, Any]:
     }
     log.info(
         "[traffic] %s (similarweb): ~%s visits/mo (%s)%s",
-        clean_domain,
+        domain_param,
         f"{monthly:,}",
         label,
         f", global_rank={gr}" if gr else "",
