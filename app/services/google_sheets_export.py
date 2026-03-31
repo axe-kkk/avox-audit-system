@@ -35,9 +35,6 @@ SHEET_HEADERS: List[str] = [
     "Трафік",
     "Профіль і соцмережі",
     "Технології та сторінки",
-    "Примітки скану",
-    "AI — висновок",
-    "Файл PDF",
 ]
 
 _ENRICH_STATUS_UK = {
@@ -256,22 +253,12 @@ def _tech_and_pages_block(enrichment_dict: Dict[str, Any]) -> str:
     return "\n".join(chunks) if chunks else "—"
 
 
-def _executive_summary_short(audit_content: Optional[Dict[str, Any]], max_len: int = 3500) -> str:
-    if not audit_content:
-        return ""
-    raw = audit_content.get("executive_summary") or ""
-    s = str(raw).replace("\r\n", "\n").strip()
-    return _clip(s, max_len)
-
-
 def build_submission_sheet_row(
     submission_id: int,
     created_at: Optional[datetime],
     submission_data: Dict[str, Any],
     enrichment_dict: Dict[str, Any],
     scores: Dict[str, Any],
-    audit_content: Optional[Dict[str, Any]],
-    pdf_basename: str,
 ) -> List[str]:
     created_s = ""
     if created_at:
@@ -292,9 +279,6 @@ def build_submission_sheet_row(
         _clip(_traffic_block(enrichment_dict)),
         _clip(_format_profile_block(enrichment_dict)),
         _clip(_tech_and_pages_block(enrichment_dict)),
-        _clip(str(enrichment_dict.get("enrichment_notes") or "").strip() or "—"),
-        _clip(_executive_summary_short(audit_content)),
-        pdf_basename or "—",
     ]
     return [str(x) if x is not None else "" for x in row]
 
@@ -361,8 +345,6 @@ def append_submission_row_sync(
     submission_data: Dict[str, Any],
     enrichment_dict: Dict[str, Any],
     scores: Dict[str, Any],
-    audit_content: Optional[Dict[str, Any]],
-    pdf_basename: str,
 ) -> bool:
     if not sheets_export_configured():
         log.debug("[sheets] пропуск: не задано GOOGLE_SHEETS_SPREADSHEET_ID або файл ключа")
@@ -374,8 +356,6 @@ def append_submission_row_sync(
         submission_data,
         enrichment_dict,
         scores,
-        audit_content,
-        pdf_basename,
     )
     if len(row) != len(SHEET_HEADERS):
         log.error("[sheets] кількість колонок не збігається з заголовком")
@@ -401,8 +381,6 @@ async def append_submission_to_sheet(
     submission_data: Dict[str, Any],
     enrichment_dict: Dict[str, Any],
     scores: Dict[str, Any],
-    audit_content: Optional[Dict[str, Any]],
-    pdf_basename: str,
 ) -> bool:
     return await asyncio.to_thread(
         append_submission_row_sync,
@@ -411,6 +389,4 @@ async def append_submission_to_sheet(
         submission_data,
         enrichment_dict,
         scores,
-        audit_content,
-        pdf_basename,
     )

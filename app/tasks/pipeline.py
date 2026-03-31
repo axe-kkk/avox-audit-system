@@ -190,8 +190,6 @@ async def _run_pipeline(submission_id: int):
                 submission_data=submission_data,
                 enrichment_dict=enrichment_dict,
                 scores=scores,
-                audit_content=audit_content,
-                pdf_basename=os.path.basename(pdf_path),
             )
             if sheet_ok:
                 audit.sheet_written = 1
