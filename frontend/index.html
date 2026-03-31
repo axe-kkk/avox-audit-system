@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AVOX — Revenue Engine Audit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="brand">
+        <span class="brand-name">AVOX</span>
+        <span class="brand-tagline">Revenue Engine · аудит</span>
+      </div>
+      <p class="header-note" id="sys-status">Форма для заявки на аудит</p>
+    </div>
+  </header>
+
+  <div class="layout">
+    <main class="card wizard-panel">
+      <p class="step-meta" id="step-indicator">Крок 1 з 10</p>
+      <h1 class="page-title" id="step-title">Контакт і сайт компанії</h1>
+      <p class="page-lead" id="step-desc">Щоб підготувати звіт, потрібні ваші дані та URL сайту для сканування.</p>
+
+      <form id="audit-form" novalidate>
+        <div class="step" data-step="0">
+          <label class="field">
+            <span class="field-label">Повне ім’я</span>
+            <input type="text" name="full_name" required autocomplete="name" placeholder="Олена Коваленко" />
+          </label>
+          <label class="field">
+            <span class="field-label">Робочий email</span>
+            <input type="email" name="work_email" required autocomplete="email" placeholder="you@company.com" />
+          </label>
+          <label class="field">
+            <span class="field-label">Сайт компанії (URL)</span>
+            <input type="url" name="company_url" required placeholder="https://www.example.com" />
+          </label>
+        </div>
+
+        <div class="step hidden" data-step="1">
+          <p class="field-hint">Питання 1 з 10 · CRM</p>
+          <div class="options" data-name="crm" data-type="single"></div>
+          <label class="field hidden" id="crm-other-wrap">
+            <span class="field-label">Яка саме CRM?</span>
+            <input type="text" name="crm_other" placeholder="Назва продукту" />
+          </label>
+        </div>
+
+        <div class="step hidden" data-step="2">
+          <p class="field-hint">Питання 2 з 10 · Команда</p>
+          <div class="options" data-name="team_size" data-type="single"></div>
+        </div>
+
+        <div class="step hidden" data-step="3">
+          <p class="field-hint">Питання 3 з 10 · Ліди</p>
+          <div class="options" data-name="monthly_leads" data-type="single"></div>
+        </div>
+
+        <div class="step hidden" data-step="4">
+          <p class="field-hint">Питання 4 з 10 · Обробка лідів</p>
+          <div class="options" data-name="lead_handling" data-type="single"></div>
+        </div>
+
+        <div class="step hidden" data-step="5">
+          <p class="field-hint">Питання 5 з 10 · Канали (оберіть усе, що використовуєте)</p>
+          <div class="options options-multi" data-name="channels_used" data-type="multi"></div>
+        </div>
+
+        <div class="step hidden" data-step="6">
+          <p class="field-hint">Питання 6 з 10 · Єдине бачення клієнта</p>
+          <div class="options" data-name="unified_view" data-type="single"></div>
+        </div>
+
+        <div class="step hidden" data-step="7">
+          <p class="field-hint">Питання 7 з 10 · Upsell / cross-sell</p>
+          <div class="options" data-name="upsell_crosssell" data-type="single"></div>
+        </div>
+
+        <div class="step hidden" data-step="8">
+          <p class="field-hint">Питання 8 з 10 · Відтік клієнтів</p>
+          <div class="options" data-name="churn_detection" data-type="single"></div>
+        </div>
+
+        <div class="step hidden" data-step="9">
+          <p class="field-hint">Питання 9 з 10 · Що заважає зростанню (можна кілька)</p>
+          <div class="options options-multi" data-name="biggest_frustrations" data-type="multi"></div>
+        </div>
+
+        <p class="error-msg hidden" id="form-error" role="alert"></p>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="btn-back">Назад</button>
+          <button type="button" class="btn btn-primary" id="btn-next">Далі</button>
+          <button type="submit" class="btn btn-primary hidden" id="btn-submit">Надіслати на аудит</button>
+        </div>
+      </form>
+    </main>
+
+    <aside class="card card-side audits-sidebar">
+      <h2 class="side-title">Активні аудити</h2>
+      <p class="audits-list-hint">Натисніть заявку, щоб бачити етапи аналізу.</p>
+      <p class="side-empty" id="active-audits-empty">Зараз немає заявок у процесі.</p>
+      <div
+        class="active-audits-scroll"
+        id="active-audits-scroll"
+        aria-label="Список активних аудитів"
+      >
+        <ul class="active-audits" id="active-audits-list"></ul>
+      </div>
+
+      <div class="last-audit" id="last-audit-block" hidden>
+        <h3 class="side-subtitle">Статус заявки</h3>
+        <p class="side-id" id="last-submission-id"></p>
+        <p class="side-url" id="last-submission-url"></p>
+        <div class="pipeline" id="last-pipeline"></div>
+        <p class="side-detail" id="last-status-detail"></p>
+      </div>
+    </aside>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
