@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     PIPELINE_MAX_RETRIES: int = 4
     PIPELINE_RETRY_COUNTDOWN_SEC: int = 300
 
+    # Проксі лише для SimilarWeb (worker). http://… або https://…; без схеми — http://
+    SIMILARWEB_PROXY: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

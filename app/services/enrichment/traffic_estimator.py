@@ -1,9 +1,10 @@
-import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import httpx
+
+from app.config import settings
 
 log = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ _VISITS_TIERS = [
     (1_000, "very_low", "1K–10K visits/mo"),
     (100, "minimal", "100–1K visits/mo"),
 ]
+
 
 def _coerce_positive_int(value: Any) -> Optional[int]:
     if value is None:
@@ -40,6 +42,7 @@ def _coerce_positive_int(value: Any) -> Optional[int]:
             return None
     return None
 
+
 def _extract_visitors_from_similarweb(data: Dict[str, Any]) -> Optional[int]:
     for key in ("visitors", "Visitors", "estimatedVisitors"):
         if key in data:
@@ -57,8 +60,6 @@ def _extract_visitors_from_similarweb(data: Dict[str, Any]) -> Optional[int]:
 
     emv = data.get("EstimatedMonthlyVisits")
     if isinstance(emv, dict) and emv:
-        # Останні місяці в відповіді часто 0 (дані ще не зібрані); беремо останній
-        # календарний місяць із visits > 0 (ISO-ключі сортуються лексикографічно).
         positive = []
         for k, v in emv.items():
             n = _coerce_positive_int(v)
@@ -70,11 +71,13 @@ def _extract_visitors_from_similarweb(data: Dict[str, Any]) -> Optional[int]:
 
     return None
 
+
 def _similarweb_global_rank(data: Dict[str, Any]) -> Optional[int]:
     gr = data.get("GlobalRank")
     if isinstance(gr, dict):
         return _coerce_positive_int(gr.get("Rank"))
     return None
+
 
 def _visits_to_tier(visits: int) -> tuple:
     for threshold, tier, label in _VISITS_TIERS:
@@ -82,8 +85,8 @@ def _visits_to_tier(visits: int) -> tuple:
             return tier, label
     return "negligible", "<100 visits/mo"
 
-def _similarweb_minimal_headers() -> Dict[str, str]:
-    """Без Sec-Ch-Ua / Sec-Fetch — іноді з VPS проходить краще, ніж «повний» набір."""
+
+def _similarweb_headers() -> Dict[str, str]:
     return {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -95,29 +98,13 @@ def _similarweb_minimal_headers() -> Dict[str, str]:
     }
 
 
-def _similarweb_browser_headers() -> Dict[str, str]:
-    """
-    Заголовки як у реального Chrome на similarweb.com (data.similarweb.com — same-site).
-    Зменшує 403 з IP дата-центрів порівняно з мінімальним набором.
-    """
-    ua = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    )
-    return {
-        "User-Agent": ua,
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Referer": "https://www.similarweb.com/",
-        "Origin": "https://www.similarweb.com",
-        "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
-    }
+def _similarweb_proxy_url() -> Optional[str]:
+    raw = (settings.SIMILARWEB_PROXY or "").strip()
+    if not raw:
+        return None
+    if "://" not in raw:
+        raw = f"http://{raw}"
+    return raw
 
 
 def _empty_result(insufficient: bool = True) -> Dict[str, Any]:
@@ -130,82 +117,8 @@ def _empty_result(insufficient: bool = True) -> Dict[str, Any]:
         "insufficient_data": insufficient,
     }
 
-async def _fetch_similarweb_once(
-    domain_param: str, headers: Dict[str, str]
-) -> tuple[Optional[Dict[str, Any]], int, str]:
-    try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True) as client:
-            resp = await client.get(
-                _SIMILARWEB_DATA_API,
-                params={"domain": domain_param},
-                headers=headers,
-            )
-            if resp.status_code != 200:
-                snip = (resp.text or "")[:160].replace("\n", " ")
-                return None, resp.status_code, snip
-            return resp.json(), 200, ""
-    except Exception as exc:
-        log.warning("[traffic] SimilarWeb request failed for domain=%s: %s", domain_param, exc)
-        return None, 0, str(exc)[:160]
 
-
-def _fetch_similarweb_curl_sync(domain_param: str) -> Optional[Dict[str, Any]]:
-    """
-    TLS/HTTP2 fingerprint як у Chrome (JA3) — httpx дає «python»-відбиток, SimilarWeb часто 403.
-    """
-    try:
-        from curl_cffi import requests as curl_requests
-    except ImportError:
-        log.debug("[traffic] curl-cffi не встановлено — пропуск обходу TLS")
-        return None
-    try:
-        r = curl_requests.get(
-            _SIMILARWEB_DATA_API,
-            params={"domain": domain_param},
-            headers=_similarweb_minimal_headers(),
-            impersonate="chrome131",
-            timeout=15,
-        )
-        if r.status_code != 200:
-            log.debug(
-                "[traffic] curl-cffi SimilarWeb HTTP %s for domain=%s",
-                r.status_code,
-                domain_param,
-            )
-            return None
-        return r.json()
-    except Exception as exc:
-        log.warning("[traffic] curl-cffi SimilarWeb domain=%s: %s", domain_param, exc)
-        return None
-
-
-async def _fetch_similarweb_curl(domain_param: str) -> Optional[Dict[str, Any]]:
-    return await asyncio.to_thread(_fetch_similarweb_curl_sync, domain_param)
-
-
-async def _fetch_similarweb(domain_param: str) -> Optional[Dict[str, Any]]:
-    """httpx (два набори заголовків), потім curl-cffi з impersonate Chrome."""
-    last_code = -1
-    last_snippet = ""
-    for hdrs in (_similarweb_browser_headers(), _similarweb_minimal_headers()):
-        data, last_code, last_snippet = await _fetch_similarweb_once(domain_param, hdrs)
-        if data is not None:
-            return data
-    curl_data = await _fetch_similarweb_curl(domain_param)
-    if curl_data is not None:
-        log.info("[traffic] SimilarWeb OK через curl-cffi (Chrome TLS) domain=%s", domain_param)
-        return curl_data
-    log.warning(
-        "[traffic] SimilarWeb HTTP %s for domain=%s (httpx+curl-cffi)%s",
-        last_code,
-        domain_param,
-        f" body={last_snippet!r}" if last_snippet else "",
-    )
-    return None
-
-
-def _similarweb_domain_candidates(site_url: str) -> List[str]:
-    """Кілька варіантів ?domain= — API по-різному відповідає на host / https://host / www."""
+def _domain_variants(site_url: str) -> List[str]:
     s = (site_url or "").strip()
     if not s:
         return []
@@ -215,55 +128,60 @@ def _similarweb_domain_candidates(site_url: str) -> List[str]:
     if not p.netloc:
         return []
     host = p.netloc.lower()
-    scheme = (p.scheme or "https").lower()
-    full = f"{scheme}://{host}"
-    bare = host.removeprefix("www.")
+    full = f"https://{host}"
+    seen: set[str] = set()
     out: List[str] = []
-    for c in (full, host, bare, f"https://{bare}"):
-        if c and c not in out:
-            out.append(c)
-    if not host.startswith("www."):
-        w = f"https://www.{bare}"
-        if w not in out:
-            out.append(w)
+    for x in (full, host):
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
     return out
 
 
+async def _fetch_similarweb(domain_param: str) -> Optional[Dict[str, Any]]:
+    proxy = _similarweb_proxy_url()
+    kw: Dict[str, Any] = {"timeout": _TIMEOUT, "follow_redirects": True}
+    if proxy:
+        kw["proxy"] = proxy
+    try:
+        async with httpx.AsyncClient(**kw) as client:
+            resp = await client.get(
+                _SIMILARWEB_DATA_API,
+                params={"domain": domain_param},
+                headers=_similarweb_headers(),
+            )
+        if resp.status_code != 200:
+            log.warning("[traffic] SimilarWeb HTTP %s domain=%s", resp.status_code, domain_param)
+            return None
+        return resp.json()
+    except Exception as exc:
+        log.warning("[traffic] SimilarWeb domain=%s: %s", domain_param, exc)
+        return None
+
+
 async def estimate_traffic(site_url: str) -> Dict[str, Any]:
-    candidates = _similarweb_domain_candidates(site_url)
-    if not candidates:
+    variants = _domain_variants(site_url)
+    if not variants:
         return _empty_result(True)
 
     sw_data: Optional[Dict[str, Any]] = None
     monthly: Optional[int] = None
-    param_used = candidates[0]
 
-    for param in candidates:
+    for param in variants:
         sw_data = await _fetch_similarweb(param)
         monthly = _extract_visitors_from_similarweb(sw_data) if sw_data else None
         if monthly is not None:
-            param_used = param
             break
 
     if not sw_data:
-        log.info(
-            "[traffic] SimilarWeb недоступний для %r, перебрано domain=%s",
-            site_url,
-            candidates,
-        )
         return _empty_result(True)
 
     if not monthly:
-        log.info(
-            "[traffic] SimilarWeb без відвідувачів для %r, domain=%s",
-            site_url,
-            candidates,
-        )
         return _empty_result(True)
 
     tier, label = _visits_to_tier(monthly)
     gr = _similarweb_global_rank(sw_data)
-    result = {
+    return {
         "traffic_source": "similarweb",
         "similarweb_global_rank": gr,
         "estimated_monthly_visits": monthly,
@@ -271,11 +189,3 @@ async def estimate_traffic(site_url: str) -> Dict[str, Any]:
         "traffic_tier_label": label,
         "insufficient_data": False,
     }
-    log.info(
-        "[traffic] %s (similarweb): ~%s visits/mo (%s)%s",
-        param_used,
-        f"{monthly:,}",
-        label,
-        f", global_rank={gr}" if gr else "",
-    )
-    return result
